@@ -43,13 +43,52 @@ class ImageManager:
                 info['format'] = img.format
                 info['mode'] = img.mode
                 
-                # Extract EXIF data
-                exif = {}
+                # Get all metadata
+                info['metadata'] = {}
+                
+                # Extract all possible metadata
+                if hasattr(img, 'info'):
+                    for key, value in img.info.items():
+                        if isinstance(value, (str, int, float)):
+                            info['metadata'][key] = str(value)
+
+                # EXIF data
                 if hasattr(img, '_getexif') and img._getexif():
-                    for tag_id, value in img._getexif().items():
+                    exif = img._getexif()
+                    for tag_id in exif:
                         tag = TAGS.get(tag_id, tag_id)
-                        exif[tag] = str(value)
-                info['exif'] = exif
+                        value = exif[tag_id]
+                        if isinstance(value, bytes):
+                            try:
+                                value = value.decode()
+                            except:
+                                value = str(value)
+                        info['metadata'][f'EXIF_{tag}'] = str(value)
+                
+                # Look for AI generation info
+                gen_info = {}
+                for key, value in info['metadata'].items():
+                    key_lower = key.lower()
+                    if isinstance(value, str):
+                        if any(term in key_lower or term in value.lower() for term in 
+                            ['parameters', 'prompt', 'negative_prompt', 'seed', 'steps', 
+                             'sampler', 'cfg_scale', 'model', 'scheduler', 
+                             'stable_diffusion', 'checkpoint']):
+                            gen_info[key] = value
+                            
+                        # Parse potential JSON or parameter strings
+                        if 'parameters' in key_lower and '{' in value:
+                            try:
+                                params = json.loads(value)
+                                for k, v in params.items():
+                                    gen_info[k] = str(v)
+                            except:
+                                pass
+                info['gen_info'] = gen_info
+
+        except Exception as e:
+            st.error(f"Error reading image {image_path}: {str(e)}")
+            return None
 
         except Exception as e:
             st.error(f"Error reading image {image_path}: {str(e)}")
@@ -219,7 +258,7 @@ def main():
         directory = st.text_input("Image Directory", value=".")
         search_query = st.text_input("Search in captions", "")
         sort_by = st.selectbox("Sort by", ["Name", "Date Modified", "Size"])
-        show_exif = st.checkbox("Show EXIF data", False)
+        show_exif = st.checkbox("Show Metadata", False)
         view_mode = st.radio("View Mode", ["Grid", "Single Image", "Batch Edit"])
         
         # Batch caption operations
@@ -333,7 +372,7 @@ def main():
                 st.session_state.selected_image = image_files[selected_idx]
                 
                 # Display selected image
-                st.image(st.session_state.selected_image, use_column_width=True)
+                st.image(st.session_state.selected_image, use_container_width=True)
         
         with col2:
             if st.session_state.selected_image:
