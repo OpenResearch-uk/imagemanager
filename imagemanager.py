@@ -13,6 +13,7 @@ import pandas as pd
 
 class ImageManager:
     def __init__(self):
+        self.clipboard_caption = ""
         self.image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
         self.cache_file = 'image_cache.json'
         self.load_cache()
@@ -88,6 +89,57 @@ class ImageManager:
             st.error(f"Error saving caption: {str(e)}")
             return False
 
+    def process_selected_images(self, operation, selected_images, **kwargs):
+        """Process selected images with various operations"""
+        processed = 0
+        for img_path in selected_images:
+            try:
+                if operation == "move":
+                    dest_folder = kwargs.get("dest_folder")
+                    if not dest_folder:
+                        continue
+                    new_path = os.path.join(dest_folder, os.path.basename(img_path))
+                    shutil.move(img_path, new_path)
+                    # Move caption file if exists
+                    caption_path = os.path.splitext(img_path)[0] + '.txt'
+                    if os.path.exists(caption_path):
+                        shutil.move(caption_path, os.path.join(dest_folder, os.path.basename(caption_path)))
+                    processed += 1
+                
+                elif operation == "copy":
+                    dest_folder = kwargs.get("dest_folder")
+                    if not dest_folder:
+                        continue
+                    new_path = os.path.join(dest_folder, os.path.basename(img_path))
+                    shutil.copy2(img_path, new_path)
+                    # Copy caption file if exists
+                    caption_path = os.path.splitext(img_path)[0] + '.txt'
+                    if os.path.exists(caption_path):
+                        shutil.copy2(caption_path, os.path.join(dest_folder, os.path.basename(caption_path)))
+                    processed += 1
+                
+                elif operation == "delete":
+                    os.remove(img_path)
+                    # Delete caption file if exists
+                    caption_path = os.path.splitext(img_path)[0] + '.txt'
+                    if os.path.exists(caption_path):
+                        os.remove(caption_path)
+                    processed += 1
+                
+                elif operation == "clear_caption":
+                    self.save_caption(img_path, "")
+                    processed += 1
+                
+                elif operation == "insert_clipboard":
+                    self.save_caption(img_path, self.clipboard_caption)
+                    processed += 1
+
+            except Exception as e:
+                st.error(f"Error processing {os.path.basename(img_path)}: {str(e)}")
+                continue
+
+        return processed
+
     def open_with_external_app(self, image_path, app_name):
         """Open image with external application"""
         try:
@@ -114,6 +166,52 @@ def main():
 
     # Initialize image manager
     manager = ImageManager()
+
+    # Selected images actions
+    if len(st.session_state.selected_images) > 0:
+        st.sidebar.header(f"Selected Images ({len(st.session_state.selected_images)})")
+        
+        # File operations
+        st.sidebar.subheader("File Operations")
+        dest_folder = st.sidebar.text_input("Destination Folder")
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("Move to Folder") and dest_folder:
+                if os.path.exists(dest_folder):
+                    processed = manager.process_selected_images("move", st.session_state.selected_images, dest_folder=dest_folder)
+                    st.success(f"Moved {processed} files to {dest_folder}")
+                    st.session_state.selected_images.clear()
+                else:
+                    st.error("Destination folder does not exist!")
+        
+        with col2:
+            if st.button("Copy to Folder") and dest_folder:
+                if os.path.exists(dest_folder):
+                    processed = manager.process_selected_images("copy", st.session_state.selected_images, dest_folder=dest_folder)
+                    st.success(f"Copied {processed} files to {dest_folder}")
+                else:
+                    st.error("Destination folder does not exist!")
+        
+        # Caption operations
+        st.sidebar.subheader("Caption Operations")
+        manager.clipboard_caption = st.sidebar.text_area("Clipboard Caption", manager.clipboard_caption)
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("Insert Caption"):
+                processed = manager.process_selected_images("insert_clipboard", st.session_state.selected_images)
+                st.success(f"Updated captions for {processed} images")
+        
+        with col2:
+            if st.button("Clear Captions"):
+                processed = manager.process_selected_images("clear_caption", st.session_state.selected_images)
+                st.success(f"Cleared captions for {processed} images")
+        
+        # Delete operation
+        if st.sidebar.button("Delete Selected", type="primary"):
+            if st.sidebar.checkbox("Confirm deletion"):
+                processed = manager.process_selected_images("delete", st.session_state.selected_images)
+                st.success(f"Deleted {processed} files")
+                st.session_state.selected_images.clear()
 
     # Sidebar - Directory selection and search
     with st.sidebar:
@@ -289,7 +387,7 @@ def main():
                     # Make image clickable and selectable
                     col1, col2 = st.columns([4, 1])
                     with col1:
-                        if st.image(image_path, caption=os.path.basename(image_path), use_column_width=True):
+                        if st.image(image_path, caption=os.path.basename(image_path), use_container_width=True):
                             st.session_state.selected_image = image_path
                     with col2:
                         is_selected = st.checkbox("Select", key=f"select_{idx}", 
