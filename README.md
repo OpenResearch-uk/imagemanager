@@ -7,6 +7,6 @@ pip install streamlit pillow
 ```
 Then run the application with:
 ```console
-streamlit run imageviewer.py
+streamlit run imagemanager.py
 ```
 The application uses a caching system to store image metadata and improve performance when dealing with large collections.
